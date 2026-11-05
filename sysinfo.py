@@ -1,4 +1,5 @@
 import psutil
+import wmi
 
 NA = "Not available"
 GB = 1024 ** 3
@@ -35,9 +36,32 @@ def show_drives():
     if not found:
         print(NA)
 
+def show_cpu_and_ram(conn):
+    heading("PROCESSOR AND MEMORY")
+    try:
+        cpu = conn.Win32_Processor()[0]
+        print(f"Processor:  {cpu.Name.strip()}")
+        print(f"Cores:      {cpu.NumberOfCores} "
+              f"({cpu.NumberOfLogicalProcessors} logical processors)")
+    except Exception:
+        print(f"Processor:  {NA}")
+        print(f"Cores:      {NA}")
+    try:
+        mem = psutil.virtual_memory()
+        print(f"Total RAM:  {gb(mem.total)}")
+        print(f"RAM in use: {gb(mem.used)} ({mem.percent}%)")
+    except Exception:
+        print(f"Total RAM:  {NA}")
+        print(f"RAM in use: {NA}")
+
 def main():
+    try:
+        conn = wmi.WMI()
+    except Exception:
+        conn = None
     print("COMPUTER INFORMATION")
     show_drives()
+    show_cpu_and_ram(conn)
 
 if __name__ == "__main__":
     main()
