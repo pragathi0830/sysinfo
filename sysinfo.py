@@ -1,5 +1,6 @@
 import ctypes
 import ctypes.wintypes
+import socket
 
 import psutil
 import wmi
@@ -7,14 +8,17 @@ import wmi
 NA = "Not available"
 GB = 1024 ** 3
 
+
 def heading(title):
     print()
     print("=" * 50)
     print(title)
     print("=" * 50)
 
+
 def gb(num_bytes):
     return f"{num_bytes / GB:.1f} GB"
+
 
 def show_drives():
     heading("DRIVES")
@@ -39,6 +43,7 @@ def show_drives():
     if not found:
         print(NA)
 
+
 def show_cpu_and_ram(conn):
     heading("PROCESSOR AND MEMORY")
     try:
@@ -56,6 +61,7 @@ def show_cpu_and_ram(conn):
     except Exception:
         print(f"Total RAM:  {NA}")
         print(f"RAM in use: {NA}")
+
 
 def monitor_sizes_ctypes():
     """Ask Windows directly for each monitor's size in pixels."""
@@ -76,6 +82,7 @@ def monitor_sizes_ctypes():
 
     ctypes.windll.user32.EnumDisplayMonitors(None, None, proc_t(callback), 0)
     return sizes
+
 
 def show_graphics(conn):
     heading("GRAPHICS AND MONITORS")
@@ -109,6 +116,52 @@ def show_graphics(conn):
         label = f" ({monitor_names[i]})" if i < len(monitor_names) else ""
         print(f"Monitor {i + 1}: {res}{label}")
 
+
+def gateway_for(conn, ip):
+    """psutil can't read the gateway, so ask WMI which adapter owns this IP."""
+    if conn is None:
+        return NA
+    try:
+        for cfg in conn.Win32_NetworkAdapterConfiguration(IPEnabled=True):
+            if cfg.IPAddress and ip in cfg.IPAddress:
+                if cfg.DefaultIPGateway:
+                    for gw in cfg.DefaultIPGateway:
+                        if ":" not in gw:  # IPv4 addresses have no colon
+                            return gw
+                    return cfg.DefaultIPGateway[0]
+    except Exception:
+        pass
+    return NA
+
+
+def show_network(conn):
+    heading("ETHERNET")
+    try:
+        addrs = psutil.net_if_addrs()
+        stats = psutil.net_if_stats()
+    except Exception:
+        print(NA)
+        return
+    found = False
+    for name, entries in addrs.items():
+        lower = name.lower()
+        if "ethernet" not in lower or lower.startswith("vethernet"):
+            continue
+        if name in stats and not stats[name].isup:
+            continue
+        ipv4 = [e.address for e in entries if e.family == socket.AF_INET]
+        if not ipv4:
+            continue
+        print(f"Connection name: {name}")
+        print(f"IP address:      {ipv4[0]}")
+        print(f"Default gateway: {gateway_for(conn, ipv4[0])}")
+        found = True
+    if not found:
+        print(f"Connection name: {NA}")
+        print(f"IP address:      {NA}")
+        print(f"Default gateway: {NA}")
+
+
 def main():
     try:
         conn = wmi.WMI()
@@ -118,6 +171,8 @@ def main():
     show_drives()
     show_cpu_and_ram(conn)
     show_graphics(conn)
+    show_network(conn)
+
 
 if __name__ == "__main__":
     main()
